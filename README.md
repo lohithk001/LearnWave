@@ -205,3 +205,8 @@ RAG allows students to ask questions and receive AI answers compiled directly fr
 - **Microphone Permission**: Allow browser microphone permissions for Voice Navigation. Works best in Chrome/Edge.
 - **AI Not Responding**: Check that your `GEMINI_API_KEY` is correctly defined in `.env.local`. Test with `npx tsx scripts/test-gemini.ts`.
 - **Reset Database**: If tables get out of sync, run `npx prisma migrate reset` to clean and reseed.
+
+
+
+
+hii
