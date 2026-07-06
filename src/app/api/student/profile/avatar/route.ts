@@ -40,33 +40,45 @@ export async function POST(req: NextRequest) {
         const originalName = file.name || 'avatar.jpg';
         const fileExtension = originalName.split('.').pop()?.toLowerCase() || 'jpg';
         
-        // 📁 Ensure uploads/avatars folder exists in public/
-        const avatarsDir = join(process.cwd(), 'public', 'uploads', 'avatars');
-        await mkdir(avatarsDir, { recursive: true });
+        let avatarUrl = '';
 
-        // Cleanup old avatars for this user to save space
+        // Try local file storage first (standard for local development)
         try {
-            if (existsSync(avatarsDir)) {
-                const files = await readdir(avatarsDir);
-                for (const filename of files) {
-                    if (filename.startsWith(userId + '_')) {
-                        await unlink(join(avatarsDir, filename)).catch(() => {});
+            const avatarsDir = join(process.cwd(), 'public', 'uploads', 'avatars');
+            await mkdir(avatarsDir, { recursive: true });
+
+            // Cleanup old avatars for this user to save space
+            try {
+                if (existsSync(avatarsDir)) {
+                    const files = await readdir(avatarsDir);
+                    for (const filename of files) {
+                        if (filename.startsWith(userId + '_')) {
+                            await unlink(join(avatarsDir, filename)).catch(() => {});
+                        }
                     }
                 }
+            } catch (err) {
+                console.error('Failed to clean up old avatars:', err);
             }
-        } catch (err) {
-            console.error('Failed to clean up old avatars:', err);
+
+            // Save new file
+            const timestamp = Date.now();
+            const newFileName = `${userId}_${timestamp}.${fileExtension}`;
+            const filePath = join(avatarsDir, newFileName);
+
+            const bytes = await file.arrayBuffer();
+            await writeFile(filePath, Buffer.from(bytes));
+
+            avatarUrl = `/uploads/avatars/${newFileName}`;
+        } catch (localWriteError) {
+            console.warn('Read-only local storage detected (expected on Vercel). Falling back to Base64 in DB:', localWriteError);
+            
+            // Fall back to Base64 data URL
+            const bytes = await file.arrayBuffer();
+            const buffer = Buffer.from(bytes);
+            const base64Data = buffer.toString('base64');
+            avatarUrl = `data:${file.type};base64,${base64Data}`;
         }
-
-        // Save new file
-        const timestamp = Date.now();
-        const newFileName = `${userId}_${timestamp}.${fileExtension}`;
-        const filePath = join(avatarsDir, newFileName);
-
-        const bytes = await file.arrayBuffer();
-        await writeFile(filePath, Buffer.from(bytes));
-
-        const avatarUrl = `/uploads/avatars/${newFileName}`;
 
         // Update database user_profiles
         await db.user_profiles.upsert({
@@ -107,9 +119,9 @@ export async function DELETE(req: NextRequest) {
         }
         const userId = decoded.userId;
 
-        // Remove old avatar files
-        const avatarsDir = join(process.cwd(), 'public', 'uploads', 'avatars');
+        // Try removing old files from filesystem if possible
         try {
+            const avatarsDir = join(process.cwd(), 'public', 'uploads', 'avatars');
             if (existsSync(avatarsDir)) {
                 const files = await readdir(avatarsDir);
                 for (const filename of files) {
@@ -119,7 +131,7 @@ export async function DELETE(req: NextRequest) {
                 }
             }
         } catch (err) {
-            console.error('Failed to delete avatar files:', err);
+            console.warn('Could not delete old avatars on filesystem (ignoring since we may be on serverless):', err);
         }
 
         // Update database to null
