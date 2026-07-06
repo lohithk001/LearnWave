@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { db } from '@/lib/db'
 import { verifyPassword, generateToken } from '@/lib/auth'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import { awardXP } from '@/lib/xp-engine'
 import { updateStreak } from '@/lib/streak-engine'
 import { isRateLimited } from '@/lib/rate-limit'
@@ -95,6 +97,14 @@ export async function POST(request: NextRequest) {
       path: '/',
     })
 
+    let avatarUrl = user.user_profiles?.avatar_url || null
+    if (avatarUrl && avatarUrl.startsWith('/uploads/')) {
+      const filePath = join(process.cwd(), 'public', avatarUrl)
+      if (!existsSync(filePath)) {
+        avatarUrl = null
+      }
+    }
+
     // Return user data without sensitive info
     const responseUser = {
       id: user.id,
@@ -106,7 +116,7 @@ export async function POST(request: NextRequest) {
       semester: user.user_profiles?.semester,
       university: user.user_profiles?.university,
       college: user.user_profiles?.college,
-      avatarUrl: user.user_profiles?.avatar_url || null
+      avatarUrl: avatarUrl
     }
 
     // Gamification hooks

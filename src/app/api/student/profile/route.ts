@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, getTokenFromRequest } from '@/lib/auth';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 export async function PUT(req: NextRequest) {
     try {
@@ -53,6 +55,14 @@ export async function PUT(req: NextRequest) {
             }
         });
 
+        let sanitizedAvatarUrl = updatedUser.user_profiles?.avatar_url || null
+        if (sanitizedAvatarUrl && sanitizedAvatarUrl.startsWith('/uploads/')) {
+            const filePath = join(process.cwd(), 'public', sanitizedAvatarUrl)
+            if (!existsSync(filePath)) {
+                sanitizedAvatarUrl = null
+            }
+        }
+
         return NextResponse.json({
             user: {
                 id: updatedUser.id,
@@ -63,7 +73,7 @@ export async function PUT(req: NextRequest) {
                 role: updatedUser.role,
                 university: updatedUser.user_profiles?.university || null,
                 college: updatedUser.user_profiles?.college || null,
-                avatarUrl: updatedUser.user_profiles?.avatar_url || null
+                avatarUrl: sanitizedAvatarUrl
             }
         });
     } catch (error) {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { db } from '@/lib/db'
 import { hashPassword, generateToken } from '@/lib/auth'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
 import { isRateLimited } from '@/lib/rate-limit'
 
@@ -125,6 +127,14 @@ export async function POST(request: NextRequest) {
       path: '/',
     })
 
+    let avatarUrl = user.user_profiles?.avatar_url || null
+    if (avatarUrl && avatarUrl.startsWith('/uploads/')) {
+      const filePath = join(process.cwd(), 'public', avatarUrl)
+      if (!existsSync(filePath)) {
+        avatarUrl = null
+      }
+    }
+
     return NextResponse.json({
       message: 'User registered successfully',
       user: {
@@ -135,7 +145,7 @@ export async function POST(request: NextRequest) {
         name: name,
         branch: user.user_profiles?.branch,
         semester: user.user_profiles?.semester,
-        avatarUrl: user.user_profiles?.avatar_url || null
+        avatarUrl: avatarUrl
       },
       token
     })
