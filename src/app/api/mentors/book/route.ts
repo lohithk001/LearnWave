@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
+import { getTokenFromRequest, verifyToken } from '@/lib/auth'
 
 const bookingSchema = z.object({
   mentorId: z.string(),
-  studentId: z.string(),
+  studentId: z.string().optional(),
   date: z.string(),
   time: z.string(),
   duration: z.number(),
@@ -16,14 +17,39 @@ const bookingSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const token = getTokenFromRequest(request)
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const decoded = await verifyToken(token)
+    if (!decoded) {
+      return NextResponse.json(
+        { error: 'Invalid or expired authentication token' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     
     // Validate request body
     const validatedData = bookingSchema.parse(body)
+
+    // Determine target student ID - caller can only book for themselves unless ADMIN
+    const studentId = validatedData.studentId || decoded.userId
+    if (decoded.role !== 'ADMIN' && studentId !== decoded.userId) {
+      return NextResponse.json(
+        { error: 'Forbidden: You can only book sessions for yourself' },
+        { status: 403 }
+      )
+    }
     
     // Check if student exists
     const student = await db.users.findUnique({
-      where: { id: validatedData.studentId }
+      where: { id: studentId }
     })
     
     if (!student || student.role !== 'STUDENT') {
@@ -77,7 +103,7 @@ export async function POST(request: NextRequest) {
     const booking = await db.bookings.create({
       data: {
         id: uuidv4(),
-        student_id: validatedData.studentId,
+        student_id: studentId,
         mentor_id: mentor.id,
         mentor_session_id: session.id,
         scheduled_at: scheduledAt,
@@ -106,7 +132,6 @@ export async function POST(request: NextRequest) {
     })
     
     // Create or get existing chat room between student and mentor
-    const studentId = validatedData.studentId
     const mentorUserId = mentor.user_id
     
     const existingRoom = await db.chat_rooms.findFirst({
@@ -178,28 +203,55 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const token = getTokenFromRequest(request)
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const decoded = await verifyToken(token)
+    if (!decoded) {
+      return NextResponse.json(
+        { error: 'Invalid or expired authentication token' },
+        { status: 401 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
-    const studentId = searchParams.get('studentId')
-    const mentorId = searchParams.get('mentorId')
+    const studentIdParam = searchParams.get('studentId')
+    const mentorIdParam = searchParams.get('mentorId')
     const status = searchParams.get('status')
     
     // Build where clause
     const where: any = {}
     
-    if (studentId) where.student_id = studentId
-    if (mentorId) {
-      const mentor = await db.mentors.findFirst({
-        where: {
-          OR: [
-            { id: mentorId },
-            { user_id: mentorId }
-          ]
-        }
+    if (decoded.role === 'STUDENT') {
+      where.student_id = decoded.userId
+    } else if (decoded.role === 'MENTOR') {
+      const callerMentor = await db.mentors.findFirst({
+        where: { user_id: decoded.userId }
       })
-      if (mentor) {
-        where.mentor_id = mentor.id
-      } else {
-        where.mentor_id = mentorId
+      if (callerMentor) {
+        where.mentor_id = callerMentor.id
+      }
+    } else if (decoded.role === 'ADMIN') {
+      if (studentIdParam) where.student_id = studentIdParam
+      if (mentorIdParam) {
+        const mentor = await db.mentors.findFirst({
+          where: {
+            OR: [
+              { id: mentorIdParam },
+              { user_id: mentorIdParam }
+            ]
+          }
+        })
+        if (mentor) {
+          where.mentor_id = mentor.id
+        } else {
+          where.mentor_id = mentorIdParam
+        }
       }
     }
     if (status) where.status = status as any

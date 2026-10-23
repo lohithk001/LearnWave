@@ -48,6 +48,13 @@ export const emitResourceUpdate = (io: Server, eventType: 'upload' | 'delete' | 
     resource,
     timestamp: new Date().toISOString()
   });
+
+  if (eventType === 'upload') {
+    io.to('resources').emit('resource-uploaded', { resource });
+  } else if (eventType === 'delete') {
+    const resourceId = typeof resource === 'string' ? resource : resource?.id;
+    io.to('resources').emit('resource-deleted', { resourceId });
+  }
   
   console.log(`Resource ${eventType} event broadcast to all connected clients`);
 };

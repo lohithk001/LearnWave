@@ -7,7 +7,6 @@ import { Sidebar } from '@/components/Sidebar'
 import { WelcomeCard } from '@/components/student/WelcomeCard'
 import { useAuth } from '@/contexts/AuthContext'
 import { useUI } from '@/contexts/UIContext'
-import { Button } from '@/components/ui/button'
 
 // Dynamic imports for large components to save memory and improve performance
 const HomeContent = dynamic(() => import('@/components/student/HomeContent').then(mod => mod.HomeContent))
@@ -30,7 +29,6 @@ export default function StudentHome() {
   const { navType, isSideExpanded } = useUI()
   const [expanded, setExpanded] = useState(true)
   const [currentPage, setCurrentPage] = useState('home')
-  const [leavesTrigger, setLeavesTrigger] = useState(0)
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   // Handle deep linking on mount
